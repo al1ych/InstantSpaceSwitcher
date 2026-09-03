@@ -70,11 +70,9 @@ static double gestureSpeed = 2000.0;
 static const double nonInstantGestureVelocityFloor = 40.0;
 static const double nonInstantGestureVelocityLinearMultiplier = 0.45;
 static const double nonInstantGestureVelocityQuadraticMultiplier = 0.0175;
-static const double nonInstantGestureCommitVelocityFloor = 80.0;
 static const double instantGestureVelocity = 2000.0;
 static const double nonInstantGestureVelocityCeiling = 1999.0;
 static const double nonInstantGestureProgress = 0.09;
-static const double nonInstantGestureCommitProgress = 0.35;
 
 static ISSSwitchCallback switchCallback = NULL;
 
@@ -181,30 +179,12 @@ double iss_dock_swipe_velocity_for_phase_and_refresh_rate(double velocity,
                                                           int phase,
                                                           double displayRefreshRate,
                                                           double baselineRefreshRate) {
-    double normalizedVelocity = iss_normalize_gesture_velocity_for_refresh_rate(
+    (void)phase;
+    return iss_normalize_gesture_velocity_for_refresh_rate(
         velocity,
         displayRefreshRate,
         baselineRefreshRate
     );
-
-    if (phase != kCGSGesturePhaseEnded
-        || velocity <= nonInstantGestureVelocityFloor
-        || velocity >= instantGestureVelocity) {
-        return normalizedVelocity;
-    }
-
-    double refreshScale = iss_refresh_rate_normalization_scale(displayRefreshRate, baselineRefreshRate);
-    if (refreshScale < 1.0) {
-        refreshScale = 1.0;
-    }
-    double commitVelocityFloor = nonInstantGestureCommitVelocityFloor * refreshScale;
-    if (commitVelocityFloor >= instantGestureVelocity) {
-        commitVelocityFloor = nonInstantGestureVelocityCeiling;
-    }
-
-    return normalizedVelocity > commitVelocityFloor
-        ? normalizedVelocity
-        : commitVelocityFloor;
 }
 
 double iss_dock_swipe_progress_for_phase_and_refresh_rate(double velocity,
@@ -215,10 +195,6 @@ double iss_dock_swipe_progress_for_phase_and_refresh_rate(double velocity,
         || velocity <= nonInstantGestureVelocityFloor
         || velocity >= instantGestureVelocity) {
         return (double)FLT_TRUE_MIN;
-    }
-
-    if (phase == kCGSGesturePhaseEnded) {
-        return nonInstantGestureCommitProgress;
     }
 
     return nonInstantGestureProgress;
