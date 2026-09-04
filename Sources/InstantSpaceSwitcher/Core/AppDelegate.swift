@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    terminateSiblingInstantSpaceSwitcherApps()
     ensureAccessibilityPermission()
 
     if !iss_init() {
@@ -417,6 +418,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
           return
         }
         guard self.isSiblingInstantSpaceSwitcher(app) else { return }
+        app.terminate()
         self.scheduleSwipeOverrideTapRefresh()
       }
     }
@@ -435,6 +437,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     let bundlePrefix = "com.interversehq.InstantSpaceSwitcher"
     return bundleIdentifier == bundlePrefix || bundleIdentifier.hasPrefix("\(bundlePrefix).")
+  }
+
+  private func terminateSiblingInstantSpaceSwitcherApps() {
+    NSWorkspace.shared.runningApplications
+      .filter(isSiblingInstantSpaceSwitcher)
+      .forEach { $0.terminate() }
   }
 
 }
