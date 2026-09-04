@@ -107,6 +107,8 @@ static bool extract_space_info_from_display(CFDictionaryRef displayDict,
                                             CGSSpaceID activeSpace,
                                             bool hasActiveSpace,
                                             ISSSpaceInfo *outInfo);
+static bool iss_install_event_tap(void);
+static void iss_destroy_event_tap(void);
 static bool load_space_info_for_display(ISSSpaceInfo *info, bool useCursorDisplay);
 static bool iss_perform_switch_gesture(ISSDirection direction, double velocity, const char *displayID);
 static bool iss_switch_with_info(const ISSSpaceInfo *info, ISSDirection direction);
@@ -780,12 +782,16 @@ void iss_set_overlay_detection_enabled(bool enabled) {
 }
 
 bool iss_init(void) {
-    if (globalTap) {
-        return true;
-    }
-
     if (!predictionsDict) {
         predictionsDict = CFDictionaryCreateMutable(NULL, 0, &kCFCopyStringDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    }
+
+    return iss_install_event_tap();
+}
+
+static bool iss_install_event_tap(void) {
+    if (globalTap) {
+        return true;
     }
 
     CGEventMask mask = CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventKeyUp)
@@ -810,11 +816,7 @@ bool iss_init(void) {
     return true;
 }
 
-void iss_destroy(void) {
-    if (predictionsDict) {
-        CFRelease(predictionsDict);
-        predictionsDict = NULL;
-    }
+static void iss_destroy_event_tap(void) {
     if (globalTap) {
         CGEventTapEnable(globalTap, false);
         if (globalSource) {
@@ -824,6 +826,21 @@ void iss_destroy(void) {
         }
         CFRelease(globalTap);
         globalTap = NULL;
+    }
+}
+
+bool iss_reinstall_event_tap(void) {
+    swipeTracking = false;
+    swipeFired = false;
+    iss_destroy_event_tap();
+    return iss_install_event_tap();
+}
+
+void iss_destroy(void) {
+    iss_destroy_event_tap();
+    if (predictionsDict) {
+        CFRelease(predictionsDict);
+        predictionsDict = NULL;
     }
 }
 
@@ -913,6 +930,9 @@ bool iss_switch_to_index(unsigned int targetIndex) {
 
 void iss_set_swipe_override(bool enabled) {
     swipeOverrideEnabled = enabled;
+    if (enabled) {
+        (void)iss_reinstall_event_tap();
+    }
     if (!enabled) {
         swipeTracking = false;
         swipeFired = false;
