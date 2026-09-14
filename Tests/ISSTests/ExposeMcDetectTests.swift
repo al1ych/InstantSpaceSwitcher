@@ -53,6 +53,12 @@ private func iss_should_require_hid_source_pid(_ eventType: Int32) -> Bool
 
 @_silgen_name("iss_swipe_override_event_mask")
 private func iss_swipe_override_event_mask() -> UInt64
+
+@_silgen_name("iss_is_swipe_override_hid_event")
+private func iss_is_swipe_override_hid_event(_ eventType: Int32, _ hidType: UInt32) -> Bool
+
+@_silgen_name("iss_swipe_override_progress_field_for_event_type")
+private func iss_swipe_override_progress_field_for_event_type(_ eventType: Int32) -> Int32
 //
 // Window structures are hardcoded from real probe output (expose_probe.c) captured
 // on macOS Sequoia with two displays (1920x1080 primary, 1728x1117 secondary).
@@ -487,16 +493,18 @@ final class SwipeOverrideEventTypeTests: XCTestCase {
     private let gestureEventType: UInt64 = 29
     private let dockControlEventType: UInt64 = 30
     private let fluidTouchGestureEventType: UInt64 = 31
+    private let dockSwipeHIDType: UInt32 = 23
+    private let gestureHIDType: UInt32 = 32
 
-    func testSwipeOverrideHandlesDockControlAndFluidTouchGestureEvents() {
+    func testSwipeOverrideHandlesGestureDockControlAndFluidTouchGestureEvents() {
+        XCTAssertTrue(iss_is_swipe_override_event_type(Int32(gestureEventType)))
         XCTAssertTrue(iss_is_swipe_override_event_type(Int32(dockControlEventType)))
         XCTAssertTrue(iss_is_swipe_override_event_type(Int32(fluidTouchGestureEventType)))
-        XCTAssertFalse(iss_is_swipe_override_event_type(Int32(gestureEventType)))
     }
 
-    func testMacOS27FluidTouchGestureDoesNotRequireKernelSourcePid() {
+    func testMacOS27GestureEventsDoNotRequireKernelSourcePid() {
         XCTAssertTrue(iss_should_require_hid_source_pid(Int32(dockControlEventType)))
-        XCTAssertTrue(iss_should_require_hid_source_pid(Int32(gestureEventType)))
+        XCTAssertFalse(iss_should_require_hid_source_pid(Int32(gestureEventType)))
         XCTAssertFalse(iss_should_require_hid_source_pid(Int32(fluidTouchGestureEventType)))
     }
 
@@ -508,5 +516,27 @@ final class SwipeOverrideEventTypeTests: XCTestCase {
         XCTAssertNotEqual(mask & (1 << gestureEventType), 0)
         XCTAssertNotEqual(mask & (1 << dockControlEventType), 0)
         XCTAssertNotEqual(mask & (1 << fluidTouchGestureEventType), 0)
+    }
+
+    func testMacOS27GenericGestureHIDTypeIsSwipeOverrideEvent() {
+        XCTAssertTrue(iss_is_swipe_override_hid_event(Int32(gestureEventType), gestureHIDType))
+        XCTAssertFalse(iss_is_swipe_override_hid_event(Int32(gestureEventType), dockSwipeHIDType))
+    }
+
+    func testLegacyDockSwipeHIDTypeIsSwipeOverrideEvent() {
+        XCTAssertTrue(iss_is_swipe_override_hid_event(Int32(dockControlEventType), dockSwipeHIDType))
+        XCTAssertTrue(iss_is_swipe_override_hid_event(Int32(fluidTouchGestureEventType), dockSwipeHIDType))
+        XCTAssertFalse(iss_is_swipe_override_hid_event(Int32(dockControlEventType), gestureHIDType))
+    }
+
+    func testMacOS27GenericGestureUsesGenericProgressField() {
+        XCTAssertEqual(
+            iss_swipe_override_progress_field_for_event_type(Int32(gestureEventType)),
+            119
+        )
+        XCTAssertEqual(
+            iss_swipe_override_progress_field_for_event_type(Int32(dockControlEventType)),
+            124
+        )
     }
 }

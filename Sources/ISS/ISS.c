@@ -14,6 +14,7 @@
 
 static const CGEventField kCGSEventTypeField = (CGEventField)55;
 static const CGEventField kCGEventGestureHIDType = (CGEventField)110;
+static const CGEventField kCGEventGenericGestureProgress = (CGEventField)119;
 static const CGEventField kCGEventGestureSwipeMotion = (CGEventField)123;
 static const CGEventField kCGEventGestureSwipeProgress = (CGEventField)124;
 static const CGEventField kCGEventGestureSwipeVelocityX = (CGEventField)129;
@@ -22,6 +23,7 @@ static const CGEventField kCGEventGesturePhase = (CGEventField)132;
 
 // See IOHIDEventType enum in IOHIDFamily
 static const uint32_t kIOHIDEventTypeDockSwipe = 23;
+static const uint32_t kIOHIDEventTypeGesture = 32;
 
 typedef uint32_t CGSEventType;
 enum {
@@ -207,13 +209,13 @@ double iss_dock_swipe_progress_for_phase(double velocity, int phase) {
 }
 
 bool iss_is_swipe_override_event_type(int eventType) {
-    return eventType == kCGSEventDockControl
+    return eventType == kCGSEventGesture
+        || eventType == kCGSEventDockControl
         || eventType == kCGSEventFluidTouchGesture;
 }
 
 bool iss_should_require_hid_source_pid(int eventType) {
-    return eventType == kCGSEventDockControl
-        || eventType == kCGSEventGesture;
+    return eventType == kCGSEventDockControl;
 }
 
 CGEventMask iss_swipe_override_event_mask(void) {
@@ -222,6 +224,31 @@ CGEventMask iss_swipe_override_event_mask(void) {
         | (1ULL << kCGSEventGesture)
         | (1ULL << kCGSEventDockControl)
         | (1ULL << kCGSEventFluidTouchGesture);
+}
+
+bool iss_is_swipe_override_hid_event(int eventType, uint32_t hidType) {
+    if (eventType == kCGSEventGesture) {
+        return hidType == kIOHIDEventTypeGesture;
+    }
+
+    return (eventType == kCGSEventDockControl
+            || eventType == kCGSEventFluidTouchGesture)
+        && hidType == kIOHIDEventTypeDockSwipe;
+}
+
+int iss_swipe_override_progress_field_for_event_type(int eventType) {
+    if (eventType == kCGSEventGesture) {
+        return kCGEventGenericGestureProgress;
+    }
+
+    return kCGEventGestureSwipeProgress;
+}
+
+double iss_swipe_override_progress_for_event_type(CGEventRef event, int eventType) {
+    return CGEventGetDoubleValueField(
+        event,
+        (CGEventField)iss_swipe_override_progress_field_for_event_type(eventType)
+    );
 }
 
 // Perform a swipe-override switch: get space info, compute target, switch,
@@ -259,8 +286,8 @@ static CGEventRef eventTapCallback(CGEventTapProxy proxy, CGEventType type,
     CGSEventType eventType =
         (CGSEventType)CGEventGetIntegerValueField(event, kCGSEventTypeField);
 
-    // Pass through synthetic old-style events. macOS 27 FluidTouchGesture can
-    // be brokered by DockControls.appex, so it may not have a kernel source PID.
+    // Pass through synthetic old-style events. macOS 27 generic/fluid gestures
+    // can be brokered by another process, so they may not have a kernel source PID.
     if (iss_should_require_hid_source_pid(eventType)) {
         pid_t sourcePid = (pid_t)CGEventGetIntegerValueField(event, kCGEventSourceUnixProcessID);
         if (sourcePid != 0) return event;
@@ -269,11 +296,15 @@ static CGEventRef eventTapCallback(CGEventTapProxy proxy, CGEventType type,
     if (iss_is_swipe_override_event_type(eventType)) {
         uint32_t hidType =
             (uint32_t)CGEventGetIntegerValueField(event, kCGEventGestureHIDType);
-        if (hidType != kIOHIDEventTypeDockSwipe) return event;
+        if (!iss_is_swipe_override_hid_event(eventType, hidType)) {
+            return swipeTracking ? NULL : event;
+        }
 
-        uint16_t motion =
-            (uint16_t)CGEventGetIntegerValueField(event, kCGEventGestureSwipeMotion);
-        if (motion != kCGGestureMotionHorizontal) return event;
+        if (eventType != kCGSEventGesture) {
+            uint16_t motion =
+                (uint16_t)CGEventGetIntegerValueField(event, kCGEventGestureSwipeMotion);
+            if (motion != kCGGestureMotionHorizontal) return event;
+        }
 
         CGSGesturePhase phase =
             (CGSGesturePhase)CGEventGetIntegerValueField(event, kCGEventGesturePhase);
@@ -289,7 +320,7 @@ static CGEventRef eventTapCallback(CGEventTapProxy proxy, CGEventType type,
             if (!swipeTracking) return event;
             if (!swipeFired) {
                 double progress =
-                    CGEventGetDoubleValueField(event, kCGEventGestureSwipeProgress);
+                    iss_swipe_override_progress_for_event_type(event, eventType);
                 if (progress != 0.0) {
                     ISSDirection dir =
                         progress > 0 ? ISSDirectionRight : ISSDirectionLeft;

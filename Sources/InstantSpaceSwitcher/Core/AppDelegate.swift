@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    registerDefaultSettings()
     terminateSiblingInstantSpaceSwitcherApps()
     ensureAccessibilityPermission()
     ensureEventTapPermission()
@@ -71,6 +72,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     observeAppActivation()
     observeAppLaunches()
     refreshSpaceInfo()
+  }
+
+  private func registerDefaultSettings() {
+    UserDefaults.standard.register(defaults: [
+      "swipeOverride": true,
+      "gestureSpeed": 2000.0,
+      "overlayDetectionEnabled": true,
+      "osdDurationMs": 200
+    ])
   }
 
   func applicationWillTerminate(_ notification: Notification) {
