@@ -206,6 +206,24 @@ double iss_dock_swipe_progress_for_phase(double velocity, int phase) {
     return iss_dock_swipe_progress_for_phase_and_refresh_rate(velocity, phase, 0.0, 0.0);
 }
 
+bool iss_is_swipe_override_event_type(int eventType) {
+    return eventType == kCGSEventDockControl
+        || eventType == kCGSEventFluidTouchGesture;
+}
+
+bool iss_should_require_hid_source_pid(int eventType) {
+    return eventType == kCGSEventDockControl
+        || eventType == kCGSEventGesture;
+}
+
+CGEventMask iss_swipe_override_event_mask(void) {
+    return CGEventMaskBit(kCGEventKeyDown)
+        | CGEventMaskBit(kCGEventKeyUp)
+        | (1ULL << kCGSEventGesture)
+        | (1ULL << kCGSEventDockControl)
+        | (1ULL << kCGSEventFluidTouchGesture);
+}
+
 // Perform a swipe-override switch: get space info, compute target, switch,
 // and notify the handler with the target index.
 static void swipe_override_switch(ISSDirection dir) {
@@ -241,14 +259,14 @@ static CGEventRef eventTapCallback(CGEventTapProxy proxy, CGEventType type,
     CGSEventType eventType =
         (CGSEventType)CGEventGetIntegerValueField(event, kCGSEventTypeField);
 
-    // Pass through synthetic events (non-HID source). Real gesture events
-    // from the trackpad have sourcePid == 0 (HID kernel).
-    if (eventType == kCGSEventDockControl || eventType == kCGSEventGesture) {
+    // Pass through synthetic old-style events. macOS 27 FluidTouchGesture can
+    // be brokered by DockControls.appex, so it may not have a kernel source PID.
+    if (iss_should_require_hid_source_pid(eventType)) {
         pid_t sourcePid = (pid_t)CGEventGetIntegerValueField(event, kCGEventSourceUnixProcessID);
         if (sourcePid != 0) return event;
     }
 
-    if (eventType == kCGSEventDockControl) {
+    if (iss_is_swipe_override_event_type(eventType)) {
         uint32_t hidType =
             (uint32_t)CGEventGetIntegerValueField(event, kCGEventGestureHIDType);
         if (hidType != kIOHIDEventTypeDockSwipe) return event;
@@ -310,7 +328,7 @@ static CGEventRef eventTapCallback(CGEventTapProxy proxy, CGEventType type,
     }
 
     // Suppress companion gesture events during active swipe tracking
-    if (eventType == kCGSEventGesture && swipeTracking) {
+    if ((eventType == kCGSEventGesture || eventType == kCGSEventFluidTouchGesture) && swipeTracking) {
         return NULL;
     }
 
@@ -794,8 +812,7 @@ static bool iss_install_event_tap(void) {
         return true;
     }
 
-    CGEventMask mask = CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventKeyUp)
-        | (1ULL << kCGSEventGesture) | (1ULL << kCGSEventDockControl);
+    CGEventMask mask = iss_swipe_override_event_mask();
     globalTap = CGEventTapCreate(
         kCGSessionEventTap,
         kCGHeadInsertEventTap,

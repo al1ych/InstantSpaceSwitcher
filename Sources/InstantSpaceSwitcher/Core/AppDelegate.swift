@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     terminateSiblingInstantSpaceSwitcherApps()
     ensureAccessibilityPermission()
+    ensureEventTapPermission()
 
     if !iss_init() {
       print("Failed to initialize ISS event tap")
@@ -106,6 +107,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
     let options = [promptKey: true] as CFDictionary
     _ = AXIsProcessTrustedWithOptions(options)
+  }
+
+  private func ensureEventTapPermission() {
+    if !CGPreflightListenEventAccess() {
+      _ = CGRequestListenEventAccess()
+    }
+    if !CGPreflightPostEventAccess() {
+      _ = CGRequestPostEventAccess()
+    }
   }
 
   private func scheduleSwipeOverrideTapRefresh() {

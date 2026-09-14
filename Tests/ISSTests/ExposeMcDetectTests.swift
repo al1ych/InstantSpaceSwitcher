@@ -44,6 +44,15 @@ private func iss_dock_swipe_progress_for_phase_and_refresh_rate(
     _ displayRefreshRate: Double,
     _ baselineRefreshRate: Double
 ) -> Double
+
+@_silgen_name("iss_is_swipe_override_event_type")
+private func iss_is_swipe_override_event_type(_ eventType: Int32) -> Bool
+
+@_silgen_name("iss_should_require_hid_source_pid")
+private func iss_should_require_hid_source_pid(_ eventType: Int32) -> Bool
+
+@_silgen_name("iss_swipe_override_event_mask")
+private func iss_swipe_override_event_mask() -> UInt64
 //
 // Window structures are hardcoded from real probe output (expose_probe.c) captured
 // on macOS Sequoia with two displays (1920x1080 primary, 1728x1117 secondary).
@@ -469,5 +478,35 @@ final class GestureVelocityTests: XCTestCase {
     func testInstantAndMultiSpaceVelocityUseMinimalProgress() {
         XCTAssertLessThan(iss_dock_swipe_progress_for_phase(2000.0, gesturePhaseChanged), 0.0001)
         XCTAssertLessThan(iss_dock_swipe_progress_for_phase(4000.0, gesturePhaseEnded), 0.0001)
+    }
+}
+
+final class SwipeOverrideEventTypeTests: XCTestCase {
+    private let keyDownEventType: UInt64 = 10
+    private let keyUpEventType: UInt64 = 11
+    private let gestureEventType: UInt64 = 29
+    private let dockControlEventType: UInt64 = 30
+    private let fluidTouchGestureEventType: UInt64 = 31
+
+    func testSwipeOverrideHandlesDockControlAndFluidTouchGestureEvents() {
+        XCTAssertTrue(iss_is_swipe_override_event_type(Int32(dockControlEventType)))
+        XCTAssertTrue(iss_is_swipe_override_event_type(Int32(fluidTouchGestureEventType)))
+        XCTAssertFalse(iss_is_swipe_override_event_type(Int32(gestureEventType)))
+    }
+
+    func testMacOS27FluidTouchGestureDoesNotRequireKernelSourcePid() {
+        XCTAssertTrue(iss_should_require_hid_source_pid(Int32(dockControlEventType)))
+        XCTAssertTrue(iss_should_require_hid_source_pid(Int32(gestureEventType)))
+        XCTAssertFalse(iss_should_require_hid_source_pid(Int32(fluidTouchGestureEventType)))
+    }
+
+    func testSwipeOverrideEventMaskIncludesMacOS27FluidTouchGesture() {
+        let mask = iss_swipe_override_event_mask()
+
+        XCTAssertNotEqual(mask & (1 << keyDownEventType), 0)
+        XCTAssertNotEqual(mask & (1 << keyUpEventType), 0)
+        XCTAssertNotEqual(mask & (1 << gestureEventType), 0)
+        XCTAssertNotEqual(mask & (1 << dockControlEventType), 0)
+        XCTAssertNotEqual(mask & (1 << fluidTouchGestureEventType), 0)
     }
 }
